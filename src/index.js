@@ -1,13 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import 'animate.css';
+import './assets/css/rubik.font.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { BrowserRouter } from './routers/browserHistory';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>
 );
 
