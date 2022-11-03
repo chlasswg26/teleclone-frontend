@@ -20,7 +20,7 @@ const ForgotPassword = () => {
                         </p>
                     </div>
                     <p className="font-['Rubik'] text-lg text-left text-[#232323] animate__animated animate__backInDown animate__delay-2s animate__fast">
-                        You’ll get messages soon on your e-mail 
+                        You’ll get messages soon on your e-mail
                     </p>
 
                     <div className="flex flex-col w-full space-y-2 animate__animated animate__fadeInUp animate__delay-2s animate__fast">
