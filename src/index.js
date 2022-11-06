@@ -6,13 +6,21 @@ import './assets/css/rubik.font.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from './routers/browserHistory';
+import { Provider as ReduxProvider } from "react-redux";
+import { store } from "./redux/store";
+import { IoProvider } from "socket.io-react-hook";
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
+
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ReduxProvider store={store}>
+      <BrowserRouter>
+        <IoProvider>
+          <App />
+        </IoProvider>
+      </BrowserRouter>
+    </ReduxProvider>
   </React.StrictMode>
 );
 

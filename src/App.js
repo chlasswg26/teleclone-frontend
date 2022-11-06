@@ -1,6 +1,6 @@
 import { Toaster } from 'react-hot-toast';
 import { Fragment } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 // import { PrivateRoute } from './routers/privateRoute'
 // import { PublicRoute } from './routers/publicRoute'
 import SignIn from './pages/auth/sign-in';
@@ -9,10 +9,13 @@ import Dashboard from './pages/dashboard';
 import Landing from './pages/landing';
 import ForgotPassword from './pages/auth/forgot-password';
 import ResetPassword from './pages/auth/reset-password';
+import { PrivateRoute } from './routers/privateRoute';
+import { PublicRoute } from './routers/publicRoute';
 
 const authPath = [
   {
-    path: '/auth'
+    path: '/auth',
+    component: <SignIn />
   },
   {
     path: '/auth/signin',
@@ -36,25 +39,26 @@ const App = () => {
   return (
     <Fragment>
       <Routes>
-        <Route path="/" element={
-          // <PrivateRoute>
-            <Dashboard />
-          // </PrivateRoute>
-        } />
+        <Route
+          path="/"
+          element={
+            <PrivateRoute>
+              <Dashboard />
+            </PrivateRoute>
+          }
+        />
         <Route path="/landing" element={<Landing />} />
         {authPath.map((item, pageIndex) => (
-          <Route key={pageIndex} path={item.path} element={
-            pageIndex === 0 ? <Navigate to={authPath[1]} replace /> : 
-              // <PublicRoute>
-                item.component
-              // </PublicRoute>
-            
-          } />
+          <Route
+            key={pageIndex}
+            path={item.path}
+            element={<PublicRoute>{item.component}</PublicRoute>}
+          />
         ))}
       </Routes>
       <Toaster />
     </Fragment>
-  )
+  );
 }
 
 export default App;

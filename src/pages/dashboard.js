@@ -9,8 +9,12 @@ import ImageCar from "../assets/images/car.png";
 import { Tab, Popover } from "@headlessui/react";
 import EmojiPicker, { Theme, SuggestionMode } from "emoji-picker-react";
 import { useState } from "react";
+import { shallowEqual, useDispatch, useSelector } from "react-redux";
+import { logoutActionCreator } from "../redux/action/creator/auth";
+import { useSocket } from "socket.io-react-hook";
+import { useNavigate } from "react-router-dom";
 
-const { REACT_APP_TITLE, REACT_APP_API_TENOR } = process.env;
+const { REACT_APP_TITLE, REACT_APP_API_TENOR, REACT_APP_SOCKET } = process.env;
 
 const Dashboard = () => {
     const [selectedEmoji, setSelectedEmoji] = useState("");
@@ -19,6 +23,15 @@ const Dashboard = () => {
     const [categories, setCategories] = useState([]);
     const inputRef = useRef();
     const [showSidebar, setShowSidebar] = useState(false);
+    const dispatch = useDispatch()
+    const { socket, error } = useSocket(REACT_APP_SOCKET, {
+      extraHeaders: {
+        Authorization: `Bearer ${localStorage.getItem("@acc_token") || null}`,
+      },
+      withCredentials: true,
+    });
+    const logout = useSelector(state => state.auth.logout, shallowEqual)
+    const navigate = useNavigate()
 
     const onClick = (emojiData, event) => {
         console.log(emojiData, event);
@@ -68,6 +81,13 @@ const Dashboard = () => {
 
         fetchCategories();
     }, [searchResults]);
+
+    useEffect(() => {
+      if (logout?.isFulfilled) {
+        socket.disconnect()
+        navigate('/auth/signin', { replace: true })
+      }
+    })
 
     return (
       <Fragment>
@@ -866,7 +886,7 @@ const Dashboard = () => {
                               Call
                             </span>
                           </div>
-                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-4">
+                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-6">
                             <svg
                               className="h-[23px] w-[19px]"
                               viewBox="0 0 19 23"
@@ -885,7 +905,7 @@ const Dashboard = () => {
                               Delete chat history
                             </span>
                           </div>
-                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-4">
+                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-5">
                             <svg
                               className="h-[23px] w-[22px]"
                               viewBox="0 0 22 23"
@@ -910,7 +930,7 @@ const Dashboard = () => {
                               Mute notification
                             </span>
                           </div>
-                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-6">
+                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-5">
                             <svg
                               className="h-[23px] w-[22px]"
                               viewBox="0 0 22 23"
@@ -937,6 +957,16 @@ const Dashboard = () => {
 
                             <span className="font-['Rubik'] text-base font-normal tracking-[-0.17px] text-white">
                               Search
+                            </span>
+                          </div>
+                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-5" onClick={() => dispatch(logoutActionCreator())}>
+                            <svg className="w-[24px] h-[24px]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M8.51428 20H4.51428C3.40971 20 2.51428 19.1046 2.51428 18V6C2.51428 4.89543 3.40971 4 4.51428 4H8.51428V6H4.51428V18H8.51428V20Z" fill="white" />
+                              <path d="M13.8418 17.385L15.262 15.9768L11.3428 12.0242L20.4857 12.0242C21.038 12.0242 21.4857 11.5765 21.4857 11.0242C21.4857 10.4719 21.038 10.0242 20.4857 10.0242L11.3236 10.0242L15.304 6.0774L13.8958 4.6572L7.5049 10.9941L13.8418 17.385Z" fill="white" />
+                            </svg>
+
+                            <span className="font-['Rubik'] text-base font-normal tracking-[-0.17px] text-white">
+                              Logout
                             </span>
                           </div>
                         </div>
