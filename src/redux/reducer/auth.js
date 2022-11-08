@@ -27,6 +27,7 @@ const authReducer = createReducer(initialState, (builder) => {
           isRejected: true,
           statusCode: action.payload?.response?.status,
           errorMessage:
+            action.payload?.response?.data?.data?.message?.msg ||
             action.payload?.response?.data?.data?.message ||
             action.payload?.message,
         };

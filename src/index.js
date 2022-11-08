@@ -9,6 +9,7 @@ import { BrowserRouter } from './routers/browserHistory';
 import { Provider as ReduxProvider } from "react-redux";
 import { store } from "./redux/store";
 import { IoProvider } from "socket.io-react-hook";
+import { SocketContextProvider } from './contexts/socket-context';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
@@ -17,7 +18,9 @@ root.render(
     <ReduxProvider store={store}>
       <BrowserRouter>
         <IoProvider>
-          <App />
+          <SocketContextProvider>
+            <App />
+          </SocketContextProvider>
         </IoProvider>
       </BrowserRouter>
     </ReduxProvider>

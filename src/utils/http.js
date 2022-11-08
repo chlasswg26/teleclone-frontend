@@ -31,6 +31,19 @@ axiosInstance.interceptors.request.use(
   }
 )
 
+axiosInstance.interceptors.response.use(
+  (response) => {
+    const token = response.data?.data?.accessToken;
+
+    if (token) localStorage.setItem("@acc_token", token);
+
+    return response;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 const AUTHENTICATION_PATH = "/auth";
 
 export const authRegister = async (userData = {}) =>

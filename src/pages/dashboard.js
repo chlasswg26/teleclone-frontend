@@ -1,22 +1,31 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, useState, useContext } from "react";
 import TopAvatar from "../assets/images/top-avatar.png";
 import SidebarAvatar from "../assets/images/avatar-sidebar.png";
-import UserOne from "../assets/images/user-1.png";
-import UserTwo from "../assets/images/user-2.png";
-import UserThree from "../assets/images/user-3.png";
 import UserFour from "../assets/images/user-4.png";
 import ImageCar from "../assets/images/car.png";
-import { Tab, Popover } from "@headlessui/react";
+import { Tab, Popover, Transition, Dialog } from "@headlessui/react";
 import EmojiPicker, { Theme, SuggestionMode } from "emoji-picker-react";
-import { useState } from "react";
-import { shallowEqual, useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { logoutActionCreator } from "../redux/action/creator/auth";
-import { useSocket } from "socket.io-react-hook";
+import { useSocketEvent } from "socket.io-react-hook";
 import { useNavigate } from "react-router-dom";
+import { SocketContext } from "../contexts/socket-context";
+import { readProfile } from "../contexts/types/socket";
+import { format } from "date-fns";
+import { useDebounceFn } from "ahooks";
+import toast from "react-hot-toast";
+import { Cloudinary } from "@cloudinary/url-gen";
+import { fill } from "@cloudinary/url-gen/actions/resize";
 
-const { REACT_APP_TITLE, REACT_APP_API_TENOR, REACT_APP_SOCKET } = process.env;
+const { 
+  REACT_APP_TITLE,
+  REACT_APP_API_TENOR,
+  REACT_APP_CLOUDINARY_CLOUD_NAME,
+  REACT_APP_CLOUDINARY_CLOUD_API_KEY,
+  REACT_APP_CLOUDINARY_CLOUD_API_SECRET
+} = process.env;
 
-const Dashboard = () => {
+const Dashboard = (socket) => {
     const [selectedEmoji, setSelectedEmoji] = useState("");
     const [searchInput, setSearchInput] = useState("");
     const [searchResults, setSearchResults] = useState(null);
@@ -24,14 +33,38 @@ const Dashboard = () => {
     const inputRef = useRef();
     const [showSidebar, setShowSidebar] = useState(false);
     const dispatch = useDispatch()
-    const { socket, error } = useSocket(REACT_APP_SOCKET, {
-      extraHeaders: {
-        Authorization: `Bearer ${localStorage.getItem("@acc_token") || null}`,
-      },
-      withCredentials: true,
-    });
-    const logout = useSelector(state => state.auth.logout, shallowEqual)
+    const logout = useSelector(state => state.auth.logout)
     const navigate = useNavigate()
+    const [activeTab, setActiveTab] = useState("chat");
+    const [openSetting, setOpenSetting] = useState(false)
+    const [avatar, setAvatar] = useState('')
+    const [preview, setPreview] = useState('')
+    const avatarRef = useRef()
+    const cloudinary = new Cloudinary({
+      cloud: {
+        cloudName: REACT_APP_CLOUDINARY_CLOUD_NAME,
+        apiKey: REACT_APP_CLOUDINARY_CLOUD_API_KEY,
+        apiSecret: REACT_APP_CLOUDINARY_CLOUD_API_SECRET,
+      },
+      url: {
+        secure: true,
+      }
+    });
+
+    const searchItemOnActiveTab = useDebounceFn(
+      (e) => {
+        e.preventDefault();
+
+        if (activeTab === "group") {
+          socket.emit("group:filter", e.target.value);
+        } else {
+          socket.emit("chat:filter", e.target.value);
+        }
+      },
+      {
+        wait: 1000,
+      }
+    );
 
     const onClick = (emojiData, event) => {
         console.log(emojiData, event);
@@ -68,6 +101,43 @@ const Dashboard = () => {
 
     const sendGif = (url) => console.log(url);
 
+    const [context, dispatchcontext] = useContext(SocketContext);
+    const { profile, recipients, groups } = context;
+
+    const handlersSocketProfile = (message) => {
+      if (message?.type === 'done') {
+        dispatchcontext({
+          type: readProfile,
+          payload: message?.data
+        })
+      }
+    }
+    const handleAvatarChange = (event) => {
+      event.preventDefault();
+
+      const uploadedImage = cloudinary
+        .image("teleclone/assets")
+        .resize(fill().width(250).height(250))
+        .toURL()
+
+      setAvatar(uploadedImage);
+      setPreview(URL.createObjectURL(event.target.files[0]));
+    }
+    const onSubmitProfile = (data) => {
+      const profileData = avatar ? {
+        avatar,
+        ...data
+      } : data
+
+      socket.emit("profile:update", profileData)
+
+      setOpenSetting(!openSetting);
+    }
+
+    useSocketEvent(socket, "profile:read", {
+      onMessage: handlersSocketProfile,
+    });
+
     useEffect(() => {
         if (!searchInput) return setSearchResults(null);
 
@@ -83,8 +153,9 @@ const Dashboard = () => {
     }, [searchResults]);
 
     useEffect(() => {
+      toast.dismiss()
+
       if (logout?.isFulfilled) {
-        socket.disconnect()
         navigate('/auth/signin', { replace: true })
       }
     })
@@ -165,7 +236,10 @@ const Dashboard = () => {
                               Close Sidebar
                             </span>
                           </div>
-                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-4">
+                          <div
+                            className="inline-flex flex-1 cursor-pointer items-center space-x-4"
+                            onClick={() => setOpenSetting(!openSetting)}
+                          >
                             <svg
                               className="h-[22px] w-[22px]"
                               viewBox="0 0 22 22"
@@ -307,17 +381,20 @@ const Dashboard = () => {
               <div className="row-span-10 flex flex-col items-center space-y-5">
                 <div className="rounded-[20px]">
                   <img
-                    src={SidebarAvatar}
+                    src={
+                      profile?.read?.profile?.avatar ||
+                      `https://avatars.dicebear.com/api/pixel-art/${profile?.read?.profile?.name}-${profile?.read?.profile?.id}.svg`
+                    }
                     alt="User Avatar"
                     className="h-[82px] w-[82px] bg-cover bg-local bg-center"
                   />
                 </div>
                 <div className="flex flex-col items-center justify-center space-y-1">
                   <div className="font-['Rubik'] text-xl font-medium tracking-[-0.17px]">
-                    Gloria Mckinney
+                    {profile?.read?.profile?.name}
                   </div>
                   <div className="font-['Rubik'] text-base font-normal tracking-[1.34px] text-[#848484]">
-                    @wdlam
+                    @{profile?.read?.profile?.username}
                   </div>
                 </div>
                 <div className="inline-flex w-full items-center justify-between">
@@ -351,7 +428,8 @@ const Dashboard = () => {
                       type="text"
                       id="search-chat"
                       className={`h-[60px] w-[92.5%] rounded-2xl bg-[#FAFAFA] font-['Rubik'] text-base font-medium text-[#232323] [padding-inline-start:2.8rem] [padding-inline-end:1rem] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#848484] placeholder:[-webkit-text-stroke-width:0em] focus-visible:outline-0`}
-                      placeholder="Type your message..."
+                      placeholder="Type your keyword..."
+                      onChange={searchItemOnActiveTab.run}
                     />
                   </div>
 
@@ -449,133 +527,106 @@ const Dashboard = () => {
             <div className="flex flex-1 flex-col p-4">
               <Tab.Group as={Fragment}>
                 <Tab.List className="inline-flex h-[50px] w-full space-x-2 text-center font-['Rubik'] text-lg font-medium leading-5 tracking-[-0.17px]">
-                  <Tab className="w-full p-1 focus-visible:outline-0 ui-selected:rounded-[20px] ui-selected:bg-[#7E98DF] ui-selected:text-white ui-not-selected:bg-inherit ui-not-selected:text-[#232323]">
+                  <Tab
+                    className="w-full p-1 focus-visible:outline-0 ui-selected:rounded-[20px] ui-selected:bg-[#7E98DF] ui-selected:text-white ui-not-selected:bg-inherit ui-not-selected:text-[#232323]"
+                    onClick={() => setActiveTab("chat")}
+                  >
                     Messages
                   </Tab>
-                  <Tab className="w-full p-1 focus-visible:outline-0 ui-selected:rounded-[20px] ui-selected:bg-[#7E98DF] ui-selected:text-white ui-not-selected:bg-inherit ui-not-selected:text-[#232323]">
+                  <Tab
+                    className="w-full p-1 focus-visible:outline-0 ui-selected:rounded-[20px] ui-selected:bg-[#7E98DF] ui-selected:text-white ui-not-selected:bg-inherit ui-not-selected:text-[#232323]"
+                    onClick={() => setActiveTab("group")}
+                  >
                     Groups
                   </Tab>
                 </Tab.List>
                 <Tab.Panels className="pt-5 font-['Rubik']">
                   <Tab.Panel className="mx-2 flex w-full flex-col space-y-4 pr-1">
-                    <div className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95">
-                      <div className="space-between inline-flex space-x-3">
-                        <div className="rounded-[20px]">
-                          <img
-                            src={UserOne}
-                            alt="User Avatar"
-                            className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
-                          />
-                        </div>
+                    {recipients?.map((item, index) => {
+                      const recipientProfile = item?.recipient?.profile;
 
-                        <div className="flex flex-col justify-evenly font-['Rubik']">
-                          <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
-                            Theresa Webb
-                          </span>
-                          <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
-                            Why did you do that?
-                          </span>
-                        </div>
-                      </div>
+                      return (
+                        <div
+                          key={index}
+                          className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95"
+                        >
+                          <div className="space-between inline-flex space-x-3">
+                            <div className="rounded-[20px]">
+                              <img
+                                src={
+                                  recipientProfile?.avatar ||
+                                  `https://avatars.dicebear.com/api/pixel-art/${Math.random()}${Math.random()}${Math.random()}.svg`
+                                }
+                                alt="User Avatar"
+                                className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
+                              />
+                            </div>
 
-                      <div className="flex flex-col items-center justify-evenly font-['Rubik']">
-                        <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
-                          15:20
-                        </span>
-                        <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
-                          2
-                        </span>
-                      </div>
-                    </div>
-                    <div className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95">
-                      <div className="space-between inline-flex space-x-3">
-                        <div className="rounded-[20px]">
-                          <img
-                            src={UserTwo}
-                            alt="User Avatar"
-                            className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
-                          />
-                        </div>
+                            <div className="flex flex-col justify-evenly font-['Rubik']">
+                              <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
+                                {recipientProfile?.name}
+                              </span>
+                              <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
+                                {recipientProfile?.content}
+                              </span>
+                            </div>
+                          </div>
 
-                        <div className="flex flex-col justify-evenly font-['Rubik']">
-                          <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
-                            Calvin Flores
-                          </span>
-                          <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
-                            Hi, bro! Come to my house!
-                          </span>
+                          <div className="flex flex-col items-center justify-evenly font-['Rubik']">
+                            <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
+                              {format(recipientProfile?.created_at, "h:m")}
+                            </span>
+                            <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
+                              2
+                            </span>
+                          </div>
                         </div>
-                      </div>
-
-                      <div className="flex flex-col items-center justify-evenly font-['Rubik']">
-                        <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
-                          15:13
-                        </span>
-                        <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
-                          1
-                        </span>
-                      </div>
-                    </div>
-                    <div className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95">
-                      <div className="space-between inline-flex space-x-3">
-                        <div className="rounded-[20px]">
-                          <img
-                            src={UserThree}
-                            alt="User Avatar"
-                            className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
-                          />
-                        </div>
-
-                        <div className="flex flex-col justify-evenly font-['Rubik']">
-                          <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
-                            Gregory Bell
-                          </span>
-                          <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
-                            Will you stop ignoring me?
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-center justify-evenly font-['Rubik']">
-                        <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
-                          15:13
-                        </span>
-                        <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
-                          164
-                        </span>
-                      </div>
-                    </div>
-                    <div className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95">
-                      <div className="space-between inline-flex space-x-3">
-                        <div className="rounded-[20px]">
-                          <img
-                            src={UserFour}
-                            alt="User Avatar"
-                            className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
-                          />
-                        </div>
-
-                        <div className="flex flex-col justify-evenly font-['Rubik']">
-                          <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
-                            Mother ❤
-                          </span>
-                          <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
-                            Me: Yes, of course come, ...
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-center justify-evenly font-['Rubik']">
-                        <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
-                          7:20
-                        </span>
-                        <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
-                          0
-                        </span>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </Tab.Panel>
-                  <Tab.Panel className="mx-2 flex w-full flex-col space-y-4 pr-1"></Tab.Panel>
+                  <Tab.Panel className="mx-2 flex w-full flex-col space-y-4 pr-1">
+                    {groups?.map((item, index) => {
+                      const conversation = item?.conversations?.pop();
+
+                      return (
+                        <div
+                          key={index}
+                          className="inline-flex cursor-pointer justify-between transition ease-in-out hover:drop-shadow-md active:scale-95"
+                        >
+                          <div className="space-between inline-flex space-x-3">
+                            <div className="rounded-[20px]">
+                              <img
+                                src={
+                                  item?.thumbnail ||
+                                  `https://avatars.dicebear.com/api/pixel-art/${Math.random()}${Math.random()}${Math.random()}.svg`
+                                }
+                                alt="User Avatar"
+                                className="h-[45px] w-[45px] bg-cover bg-local bg-center md:h-[50px] md:w-[50px] lg:h-[62px] lg:w-[62px]"
+                              />
+                            </div>
+
+                            <div className="flex flex-col justify-evenly font-['Rubik']">
+                              <span className="w-auto whitespace-pre-wrap break-all text-base font-medium tracking-[-0.17px] text-[#232323] line-clamp-1">
+                                {item?.name}
+                              </span>
+                              <span className="w-auto whitespace-pre-wrap break-all text-sm font-normal tracking-[-0.17px] text-[#7E98DF] line-clamp-1">
+                                {conversation?.content}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-center justify-evenly font-['Rubik']">
+                            <span className="text-sm font-normal tracking-[-0.17px] text-[#848484]">
+                              {format(conversation?.created_at, "h:m")}
+                            </span>
+                            <span className="rounded-full bg-[#7E98DF] px-3 py-1 text-center text-sm font-normal tracking-[-0.17px] text-white">
+                              2
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </Tab.Panel>
                 </Tab.Panels>
               </Tab.Group>
             </div>
@@ -959,10 +1010,24 @@ const Dashboard = () => {
                               Search
                             </span>
                           </div>
-                          <div className="inline-flex flex-1 cursor-pointer items-center space-x-5" onClick={() => dispatch(logoutActionCreator())}>
-                            <svg className="w-[24px] h-[24px]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M8.51428 20H4.51428C3.40971 20 2.51428 19.1046 2.51428 18V6C2.51428 4.89543 3.40971 4 4.51428 4H8.51428V6H4.51428V18H8.51428V20Z" fill="white" />
-                              <path d="M13.8418 17.385L15.262 15.9768L11.3428 12.0242L20.4857 12.0242C21.038 12.0242 21.4857 11.5765 21.4857 11.0242C21.4857 10.4719 21.038 10.0242 20.4857 10.0242L11.3236 10.0242L15.304 6.0774L13.8958 4.6572L7.5049 10.9941L13.8418 17.385Z" fill="white" />
+                          <div
+                            className="inline-flex flex-1 cursor-pointer items-center space-x-5"
+                            onClick={() => dispatch(logoutActionCreator())}
+                          >
+                            <svg
+                              className="h-[24px] w-[24px]"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M8.51428 20H4.51428C3.40971 20 2.51428 19.1046 2.51428 18V6C2.51428 4.89543 3.40971 4 4.51428 4H8.51428V6H4.51428V18H8.51428V20Z"
+                                fill="white"
+                              />
+                              <path
+                                d="M13.8418 17.385L15.262 15.9768L11.3428 12.0242L20.4857 12.0242C21.038 12.0242 21.4857 11.5765 21.4857 11.0242C21.4857 10.4719 21.038 10.0242 20.4857 10.0242L11.3236 10.0242L15.304 6.0774L13.8958 4.6572L7.5049 10.9941L13.8418 17.385Z"
+                                fill="white"
+                              />
                             </svg>
 
                             <span className="font-['Rubik'] text-base font-normal tracking-[-0.17px] text-white">
@@ -1370,6 +1435,149 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+        <Transition appear show={openSetting} as={Fragment}>
+          <Dialog
+            as="div"
+            className="relative z-10"
+            unmount={true}
+            onClose={() => setOpenSetting(true)}
+          >
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black bg-opacity-25" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900"
+                    >
+                      Edit profile
+                    </Dialog.Title>
+                    <div className="mt-2 flex flex-col content-center items-center space-y-4">
+                      <div
+                        className="cursor-pointer rounded-[20px]"
+                        onClick={() => avatarRef.current.click()}
+                      >
+                        <img
+                          src={
+                            !preview
+                              ? profile?.read?.profile?.avatar ||
+                                `https://avatars.dicebear.com/api/pixel-art/${profile?.read?.profile?.name}-${profile?.read?.profile?.id}.svg`
+                              : preview
+                          }
+                          alt="User Avatar"
+                          className="h-[82px] w-[82px] bg-cover bg-local bg-center"
+                        />
+                        <input
+                          typ="file"
+                          ref={avatarRef}
+                          onChange={handleAvatarChange}
+                          className="hidden"
+                        />
+                      </div>
+                      <label
+                        htmlFor="profile-name"
+                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                      >
+                        <span className="text-xs font-medium text-gray-700">
+                          {" "}
+                          Name{" "}
+                        </span>
+
+                        <input
+                          type="text"
+                          id="profile-name"
+                          placeholder={profile?.read?.profile?.name}
+                          defaultValue={profile?.read?.profile?.name}
+                          className="mt-1 w-full border-none p-0 focus:border-transparent focus:outline-none focus:ring-0 sm:text-sm"
+                        />
+                      </label>
+                      <label
+                        htmlFor="profile-phone"
+                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                      >
+                        <span className="text-xs font-medium text-gray-700">
+                          {" "}
+                          Phone{" "}
+                        </span>
+
+                        <input
+                          type="text"
+                          id="profile-phone"
+                          placeholder={profile?.read?.profile?.phone}
+                          defaultValue={profile?.read?.profile?.phone}
+                          className="mt-1 w-full border-none p-0 focus:border-transparent focus:outline-none focus:ring-0 sm:text-sm"
+                        />
+                      </label>
+                      <label
+                        htmlFor="profile-bio"
+                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                      >
+                        <span className="text-xs font-medium text-gray-700">
+                          {" "}
+                          Bio{" "}
+                        </span>
+
+                        <textarea
+                          type="text"
+                          id="profile-bio"
+                          placeholder={profile?.read?.profile?.bio}
+                          defaultValue={profile?.read?.profile?.bio || ''}
+                          className="mt-1 w-full border-none p-0 focus:border-transparent focus:outline-none focus:ring-0 sm:text-sm"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 inline-flex flex-1 items-center justify-between w-full">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      >
+                        Change Password
+                      </button>
+
+                      <div className="inline-flex items-center space-x-5">
+                        <button
+                          type="button"
+                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          onClick={() => setOpenSetting(!openSetting)}
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
       </Fragment>
     );
 };
