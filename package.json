@@ -27,6 +27,7 @@
     "react-redux": "^8.0.5",
     "react-router-dom": "^6.4.2",
     "react-scripts": "5.0.1",
+    "react-use-caret-position": "^1.1.0",
     "react18-gif-player": "^0.4.2",
     "redux-logger": "^3.0.6",
     "socket.io-react-hook": "^2.2.2",

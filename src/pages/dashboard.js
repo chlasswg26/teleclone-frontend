@@ -12,21 +12,17 @@ import { useNavigate } from "react-router-dom";
 import { SocketContext } from "../contexts/socket-context";
 import { readProfile } from "../contexts/types/socket";
 import { format } from "date-fns";
-import { useDebounceFn } from "ahooks";
+import { useDebounceFn, useEventListener } from "ahooks";
 import toast from "react-hot-toast";
-import { Cloudinary } from "@cloudinary/url-gen";
-import { fill } from "@cloudinary/url-gen/actions/resize";
 
-const { 
+const {
   REACT_APP_TITLE,
   REACT_APP_API_TENOR,
   REACT_APP_CLOUDINARY_CLOUD_NAME,
-  REACT_APP_CLOUDINARY_CLOUD_API_KEY,
-  REACT_APP_CLOUDINARY_CLOUD_API_SECRET
+  REACT_APP_CLOUDINARY_CLOUD_PRESET,
 } = process.env;
 
 const Dashboard = (socket) => {
-    const [selectedEmoji, setSelectedEmoji] = useState("");
     const [searchInput, setSearchInput] = useState("");
     const [searchResults, setSearchResults] = useState(null);
     const [categories, setCategories] = useState([]);
@@ -39,17 +35,94 @@ const Dashboard = (socket) => {
     const [openSetting, setOpenSetting] = useState(false)
     const [avatar, setAvatar] = useState('')
     const [preview, setPreview] = useState('')
-    const avatarRef = useRef()
-    const cloudinary = new Cloudinary({
-      cloud: {
-        cloudName: REACT_APP_CLOUDINARY_CLOUD_NAME,
-        apiKey: REACT_APP_CLOUDINARY_CLOUD_API_KEY,
-        apiSecret: REACT_APP_CLOUDINARY_CLOUD_API_SECRET,
-      },
-      url: {
-        secure: true,
+    const contentEditableRef = useRef();
+    const [selectionData, setSelectionData] = useState({
+      saveSelection: () => {},
+      restoreSelection: () => {}
+    })
+    const [savedCurrentSelection, setSavedCurrentSelection] = useState('')
+
+    const calculateCaretLocation = () => {
+      if (window.getSelection && document.createRange) {
+        setSelectionData({
+          saveSelection: (containerEl) => {
+            let range = window.getSelection().getRangeAt(0);
+            let preSelectionRange = range.cloneRange();
+            preSelectionRange.selectNodeContents(containerEl);
+            preSelectionRange.setEnd(range.startContainer, range.startOffset);
+            let start = preSelectionRange.toString().length;
+
+            return {
+                start: start,
+                end: start + range.toString().length
+            }
+          },
+          restoreSelection: (containerEl, savedSel) => {
+            let charIndex = 0, range = document.createRange();
+            range.setStart(containerEl, 0);
+            range.collapse(true);
+            let nodeStack = [containerEl], node, foundStart = false, stop = false;
+            
+            while (!stop && (node = nodeStack.pop())) {
+                if (node.nodeType === 3) {
+                    let nextCharIndex = charIndex + node.length;
+                    if (!foundStart && savedSel.start >= charIndex && savedSel.start <= nextCharIndex) {
+                        range.setStart(node, savedSel.start - charIndex);
+                        foundStart = true;
+                    }
+                    if (foundStart && savedSel.end >= charIndex && savedSel.end <= nextCharIndex) {
+                        range.setEnd(node, savedSel.end - charIndex);
+                        stop = true;
+                    }
+                    charIndex = nextCharIndex;
+                } else {
+                    let i = node.childNodes.length;
+                    while (i--) {
+                        nodeStack.push(node.childNodes[i]);
+                    }
+                }
+            }
+
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        })
+      } else if (document.selection && document.body.createTextRange) {
+        setSelectionData({
+          saveSelection: (containerEl) => {
+              let selectedTextRange = document.selection.createRange();
+              let preSelectionTextRange = document.body.createTextRange();
+              preSelectionTextRange.moveToElementText(containerEl);
+              preSelectionTextRange.setEndPoint("EndToStart", selectedTextRange);
+              let start = preSelectionTextRange.text.length;
+
+              return {
+                  start: start,
+                  end: start + selectedTextRange.text.length
+              }
+          },
+          restoreSelection: (containerEl, savedSel) => {
+              var textRange = document.body.createTextRange();
+              textRange.moveToElementText(containerEl);
+              textRange.collapse(true);
+              textRange.moveEnd("character", savedSel.end);
+              textRange.moveStart("character", savedSel.start);
+              textRange.select();
+          }
+        })
       }
-    });
+    }
+
+    const saveCaretLatestPosition = () => {
+      calculateCaretLocation()
+
+      setSavedCurrentSelection(selectionData.saveSelection(contentEditableRef.current));
+    }
+
+    const restoreCaretLatestPosition = () => {
+      setSavedCurrentSelection(selectionData.restoreSelection(contentEditableRef.current, savedCurrentSelection));
+    }
 
     const searchItemOnActiveTab = useDebounceFn(
       (e) => {
@@ -66,9 +139,42 @@ const Dashboard = (socket) => {
       }
     );
 
-    const onClick = (emojiData, event) => {
-        console.log(emojiData, event);
-        setSelectedEmoji(emojiData.unified);
+    const listenChange = (value) => {
+      let sel,range;
+      sel = window.getSelection();
+      if (sel.getRangeAt && sel.rangeCount) {
+        range = sel.getRangeAt(0);
+        range.deleteContents();
+        // Range.createContextualFragment() would be useful here but is
+        // only relatively recently standardized and is not supported in
+        // some browsers (IE9, for one)
+        let el = document.createElement("div");
+        el.innerText =value;
+        let frag = document.createDocumentFragment(), node, lastNode;
+        while ((node = el.firstChild)) {
+            lastNode = frag.appendChild(node);
+        }
+        range.insertNode(frag);
+
+        // Preserve the selection
+        if (lastNode) {
+          range = range.cloneRange();
+          range.setStartAfter(lastNode);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    }
+
+    const onClickEmoji = (emojiData) => {
+      if (savedCurrentSelection) {
+        restoreCaretLatestPosition()
+      } else {
+        contentEditableRef.current.focus()
+      }
+  
+      listenChange(emojiData.emoji)
     };
 
     const fetchGifs = async (url) => {
@@ -112,16 +218,60 @@ const Dashboard = (socket) => {
         })
       }
     }
-    const handleAvatarChange = (event) => {
-      event.preventDefault();
+    const uploadWidgetWindow = () => {
+      if (window?.cloudinary) {
+        toast.dismiss();
 
-      const uploadedImage = cloudinary
-        .image("teleclone/assets")
-        .resize(fill().width(250).height(250))
-        .toURL()
-
-      setAvatar(uploadedImage);
-      setPreview(URL.createObjectURL(event.target.files[0]));
+        return window.cloudinary.createUploadWidget(
+          {
+            cloudName: REACT_APP_CLOUDINARY_CLOUD_NAME,
+            uploadPreset: REACT_APP_CLOUDINARY_CLOUD_PRESET,
+            sources: [
+              "local",
+              "url",
+              "camera",
+              "shutterstock",
+              "getty",
+              "istock",
+              "unsplash",
+            ],
+            showAdvancedOptions: false,
+            cropping: false,
+            multiple: false,
+            defaultSource: "local",
+            styles: {
+              palette: {
+                window: "#FFFFFF",
+                windowBorder: "#7E98DF",
+                tabIcon: "#7E98DF",
+                menuIcons: "#5A616A",
+                textDark: "#000000",
+                textLight: "#FFFFFF",
+                link: "#7E98DF",
+                action: "#FF620C",
+                inactiveTabIcon: "#0E2F5A",
+                error: "#F44235",
+                inProgress: "#7E98DF",
+                complete: "#20B832",
+                sourceBg: "#E4EBF1",
+              },
+              fonts: {
+                default: null,
+                "'Rubik', sans-serif": {
+                  url: "https://fonts.googleapis.com/css?family=Rubik",
+                  active: true,
+                },
+              },
+            },
+          },
+          (error, result) => {
+            if (!error && result && result.event === "success") {
+              setPreview(result.info.secure_url);
+              setAvatar(result.info.secure_url);
+            }
+          }
+        );
+      }
     }
     const onSubmitProfile = (data) => {
       const profileData = avatar ? {
@@ -132,6 +282,16 @@ const Dashboard = (socket) => {
       socket.emit("profile:update", profileData)
 
       setOpenSetting(!openSetting);
+    }
+    const onSetAvatar = () => {
+      toast.dismiss()
+      toast.loading('Loading...')
+
+      setTimeout(() => {
+        if (window?.cloudinary) {
+          uploadWidgetWindow().open()
+        }
+      }, 5000)
     }
 
     useSocketEvent(socket, "profile:read", {
@@ -159,6 +319,18 @@ const Dashboard = (socket) => {
         navigate('/auth/signin', { replace: true })
       }
     })
+
+    useEventListener(
+      'paste',
+      (event) => {
+        event.preventDefault()
+
+        const text = (event.originalEvent || event).clipboardData.getData('text/plain')
+
+        document.execCommand("insertText", false, text)
+      },
+      { target: contentEditableRef },
+    )
 
     return (
       <Fragment>
@@ -1152,14 +1324,16 @@ const Dashboard = (socket) => {
                 </div>
               </div>
               <div className="row-span-2 flex w-full flex-row bg-[#FFFFFF] shadow-sm drop-shadow-sm">
-                <div className="inline-flex w-full justify-center px-2 py-2">
+                <div className="inline-flex w-full items-center justify-center px-2 py-2">
                   <div
-                    className={`editableContent inline-flex font-['Rubik'] ${
-                      selectedEmoji && `after:[content:'${selectedEmoji}']`
-                    } h-[70px] w-[98.5%] items-center overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded-2xl bg-[#FAFAFA] py-5 text-base font-medium text-[#232323] [padding-inline-start:1rem] [padding-inline-end:8.5rem] focus-visible:outline-0 md:[padding-inline-end:8rem]`}
+                    ref={contentEditableRef}
+                    className={`editableContent h-[70px] w-[98.5%] overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded-2xl bg-[#FAFAFA] py-5 font-['Rubik'] font-medium text-[#232323] [padding-inline-start:1rem] [padding-inline-end:8.5rem] focus-visible:outline-0 md:[padding-inline-end:8rem]`}
                     contentEditable={true}
+                    suppressContentEditableWarning={true}
                     placeholder="Type your message..."
-                  ></div>
+                    onBlur={saveCaretLatestPosition}
+                  >
+                  </div>
                   <Popover.Group className="absolute inset-y-5 right-9 bottom-5 inline-flex items-center space-x-4 text-[#7E98DF]">
                     <Popover>
                       <Popover.Button className="focus-visible:outline-0">
@@ -1320,14 +1494,14 @@ const Dashboard = (socket) => {
                         className="absolute bottom-[4.5rem] right-[-1.5rem] z-10"
                       >
                         <EmojiPicker
-                          onEmojiClick={onClick}
+                          onEmojiClick={onClickEmoji}
                           autoFocusSearch={false}
                           theme={Theme.AUTO}
                           lazyLoadEmojis={true}
                           width="7.7cm"
                           suggestedEmojisMode={SuggestionMode.RECENT}
                           searchPlaceHolder="Search emoji"
-                          emojiStyle="twitter"
+                          emojiStyle="google"
                         />
                       </Popover.Panel>
                     </Popover>
@@ -1472,11 +1646,8 @@ const Dashboard = (socket) => {
                     >
                       Edit profile
                     </Dialog.Title>
-                    <div className="mt-2 flex flex-col content-center items-center space-y-4">
-                      <div
-                        className="cursor-pointer rounded-[20px]"
-                        onClick={() => avatarRef.current.click()}
-                      >
+                    <div className="mt-2 flex w-full flex-col content-center items-center space-y-4">
+                      <div className="cursor-pointer" onClick={onSetAvatar}>
                         <img
                           src={
                             !preview
@@ -1485,18 +1656,12 @@ const Dashboard = (socket) => {
                               : preview
                           }
                           alt="User Avatar"
-                          className="h-[82px] w-[82px] bg-cover bg-local bg-center"
-                        />
-                        <input
-                          typ="file"
-                          ref={avatarRef}
-                          onChange={handleAvatarChange}
-                          className="hidden"
+                          className="h-[3.5cm] w-[3.5cm] rounded-3xl bg-cover bg-local bg-center"
                         />
                       </div>
                       <label
                         htmlFor="profile-name"
-                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                        className="block w-full overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
                       >
                         <span className="text-xs font-medium text-gray-700">
                           {" "}
@@ -1513,7 +1678,7 @@ const Dashboard = (socket) => {
                       </label>
                       <label
                         htmlFor="profile-phone"
-                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                        className="block w-full overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
                       >
                         <span className="text-xs font-medium text-gray-700">
                           {" "}
@@ -1530,7 +1695,7 @@ const Dashboard = (socket) => {
                       </label>
                       <label
                         htmlFor="profile-bio"
-                        className="block overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
+                        className="block w-full overflow-hidden rounded-md border border-gray-200 px-3 py-2 shadow-sm focus-within:border-blue-600 focus-within:ring-1 focus-within:ring-blue-600"
                       >
                         <span className="text-xs font-medium text-gray-700">
                           {" "}
@@ -1541,36 +1706,62 @@ const Dashboard = (socket) => {
                           type="text"
                           id="profile-bio"
                           placeholder={profile?.read?.profile?.bio}
-                          defaultValue={profile?.read?.profile?.bio || ''}
-                          className="mt-1 w-full border-none p-0 focus:border-transparent focus:outline-none focus:ring-0 sm:text-sm"
+                          defaultValue={profile?.read?.profile?.bio || ""}
+                          className="mt-1 h-[80px] w-full border-none p-0 focus:border-transparent focus:outline-none focus:ring-0 sm:text-sm"
                         />
                       </label>
                     </div>
 
-                    <div className="mt-4 inline-flex flex-1 items-center justify-between w-full">
+                    <div className="mt-4 hidden w-full flex-1 items-center justify-between md:inline-flex">
                       <button
                         type="button"
-                        className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-[#7E98DF] px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-[#a4baf8] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                       >
                         Change Password
                       </button>
 
-                      <div className="inline-flex items-center space-x-5">
+                      <div className="inline-flex items-center space-x-3">
+                        <button
+                          type="submit"
+                          className="inline-flex w-[75px] justify-center rounded-md border border-transparent bg-emerald-400 px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-emerald-200 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        >
+                          Save
+                        </button>
+
                         <button
                           type="button"
-                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          className="inline-flex w-[75px] justify-center rounded-md border border-transparent bg-rose-400 px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-rose-200 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                           onClick={() => setOpenSetting(!openSetting)}
                         >
                           Cancel
                         </button>
+                      </div>
+                    </div>
 
+                    <div className="mt-4 flex w-full flex-1 flex-col items-center space-y-5 md:hidden">
+                      <div className="inline-flex items-center justify-evenly space-x-3">
                         <button
                           type="submit"
-                          className="inline-flex justify-center rounded-md border border-transparent bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          className="w-[75px] rounded-md border border-transparent bg-emerald-400 px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-emerald-200 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                         >
                           Save
                         </button>
+
+                        <button
+                          type="button"
+                          className="w-[75px] rounded-md border border-transparent bg-rose-400 px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-rose-200 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          onClick={() => setOpenSetting(!openSetting)}
+                        >
+                          Cancel
+                        </button>
                       </div>
+
+                      <button
+                        type="button"
+                        className="rounded-md border border-transparent bg-[#7E98DF] px-4 py-2 text-sm font-medium text-white shadow-sm drop-shadow-sm hover:bg-[#a4baf8] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      >
+                        Change Password
+                      </button>
                     </div>
                   </Dialog.Panel>
                 </Transition.Child>

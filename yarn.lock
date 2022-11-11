@@ -7817,6 +7817,11 @@ react-scripts@5.0.1:
   optionalDependencies:
     fsevents "^2.3.2"
 
+react-use-caret-position@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/react-use-caret-position/-/react-use-caret-position-1.1.0.tgz#24755a3acdc5f04bd773deb120bb1d320eb3b47d"
+  integrity sha512-hmRVVLH/GWWBEeR3/a4Ne2o3Hg8TG9g4N0W9oBGJW3k+jAoG+itnNZAIEh9ONkm9cLbBKP9zBLWsmwUcuO2Ajw==
+
 react18-gif-player@^0.4.2:
   version "0.4.2"
   resolved "https://registry.yarnpkg.com/react18-gif-player/-/react18-gif-player-0.4.2.tgz#e622a4095bfc06b491ad4ece488471c8de5d4b83"
