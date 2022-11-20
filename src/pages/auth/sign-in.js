@@ -27,6 +27,7 @@ const SignIn = (socket) => {
     const login = useSelector(state => state.auth.login);
     const onSubmit = (data) => dispatch(loginActionCreator(data));
     const navigate = useNavigate()
+    const logout = useSelector(state => state.auth.logout)
 
     const checkPopup = () => {
         const check = setInterval(() => {
@@ -86,6 +87,12 @@ const SignIn = (socket) => {
         window.location.replace("/");
       }
     }, [isGoogleAuthenticated, login]);
+
+    useUpdateEffect(() => {
+      if (logout?.isFulfilled) {
+        window.location.reload()
+      }
+    }, [logout])
 
     return (
       <Fragment>
