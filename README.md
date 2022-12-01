@@ -4,7 +4,7 @@
 
 <p id="description">Teleclone adalah sebuah aplikasi berbasis website yang digunakan untuk berkomunikasi dengan pengguna lain dan juga berinteraksi dengan beberapa fitur emoji dan sticker. Teleclone dikembangkan dengan stack PERN (PostgreSQL Express js React js Node js) dan Realtime tools Socket.io.</p>
 
-<p align="center"><img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&amp;logo=react&amp;logoColor=61DAFB" alt="shields"><img src="https://img.shields.io/badge/Express.js-404D59?style=for-the-badge" alt="shields"><img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&amp;logo=tailwind-css&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/Redux-593D88?style=for-the-badge&amp;logo=redux&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&amp;logo=postgresql&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/Realtime-Socket.IO-brightgreen" alt="shields"></p>
+<p align="center"><img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&amp;logo=react&amp;logoColor=61DAFB" alt="shields"><img src="https://img.shields.io/badge/Express.js-404D59?style=for-the-badge" alt="shields"><img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&amp;logo=tailwind-css&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/Redux-593D88?style=for-the-badge&amp;logo=redux&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&amp;logo=postgresql&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/Socket.io-black?style=for-the-badge&amp;logo=socket.io&amp;badgeColor=010101" alt="shields"></p>
 
 <h2>🚀 Demo</h2>
 
@@ -12,6 +12,7 @@
 
 <h2>Project Screenshots:</h2>
 
+<p align="center">
 <img src="https://i.imgur.com/tDwTfpG.png" alt="project-screenshot" width="300" height="300/">
 
 <img src="https://i.imgur.com/ygRhoEl.png" alt="project-screenshot" width="300" height="300/">
@@ -27,6 +28,7 @@
 <img src="https://i.imgur.com/aZeJ1mO.png" alt="project-screenshot" width="300" height="300/">
 
 <img src="https://i.imgur.com/AqoW0Mp.png" alt="project-screenshot" width="300" height="300/">
+</p>
 
   
   
