@@ -75,7 +75,7 @@ npm install
 mv .env.example .env
 ```
 
-<p>6. Development Mode</p>
+<p>6. Development</p>
 
 ```
 yarn start
